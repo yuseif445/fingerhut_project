@@ -1,0 +1,76 @@
+---
+title: "eda"
+output: html_document
+date: "2024-01-18"
+---
+
+1.Where is the fall-off point in the funnel? Where do people usually get stuck in their
+journey and as a result don’t become activated users? How does time relate to users not
+moving forward in their journey?
+
+2. How can we group customers together such that we find patterns of incompletion in the
+journey?
+
+```{r}
+#Read in Data and Libraries
+library(tidyverse)
+library(lubridate)
+library(zoo)
+data <- read.csv("/Users/yusei/OneDrive/Documents/M148/export.csv")
+event_def <- read.csv("/Users/yusei/OneDrive/Documents/M148/Event Definitions.csv")
+```
+
+```{r}
+#To answer EDA
+combinations <- data %>% group_by(customer_id, account_id) %>% count()
+cust <- combinations %>% select(customer_id, account_id) %>% group_by(customer_id) %>%  count()
+df <- data.frame(cust)
+df <- df[df$n != 1,]
+print(nrow(df))
+acct <- combinations %>% select(customer_id, account_id) %>% group_by(account_id) %>%  count()
+df2 <- data.frame(acct)
+df2 <- df2[df2$n != 1,]
+print(nrow(df2))
+```
+ 
+```{r}
+#Clean defenitions for cleaner merge
+event_def <- event_def %>% select(!c(journey_id, event_definition_id))
+
+#Left Join 
+data_def <- left_join(data, event_def, by = 'event_name')
+head(data_def, 200)
+```
+
+```{r}
+#removing duplicate entries that are at the same exact time stamp
+data_def <- data_def %>% group_by(customer_id, event_name) %>% filter(event_timestamp != lag(event_timestamp, default="1"))
+data_def <- data.frame(data_def)
+
+#Cleaning time to lubridate time
+data_def$event_timestamp <- ymd_hms(data_def$event_timestamp)
+```
+
+3. Where is it effective to intervene with an email or promotion code
+```{r}
+#Cleaning duplicate promotion created entries
+data_three <- data_def
+data_three %>% filter(event_name == 'promotion_created')
+head(data_three, 100)
+```
+
+Whats rate of success after promo sent? 
+```{r}
+#want customers who have received promotions. 
+#group into customer id, select customer ids where event_name == promotion created
+#promos <- data_three %>% group_by(customer_id)
+
+#data_three %>% group_by(customer_id) %>% mutate(time_diff = event_timestamp - lag(event_timestamp, default="1"))
+
+#data_three %>% group_by(customer_id) %>% mutate(diff_between = as.vector(diff(zoo(event_timestamp), na.pad=TRUE)))
+
+#promos[promos$event_name == 'promotion_created'|promos$event_name == 'order_shipped',]
+
+#lag(data_def$event_timestamp)
+```
+
