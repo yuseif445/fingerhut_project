@@ -16,23 +16,13 @@ journey?
 library(tidyverse)
 library(lubridate)
 library(zoo)
+library(summarytools)
+library(markovchain)
 data <- read.csv("/Users/yusei/OneDrive/Documents/M148/export.csv")
 event_def <- read.csv("/Users/yusei/OneDrive/Documents/M148/Event Definitions.csv")
 ```
 
-```{r}
-#To answer EDA
-combinations <- data %>% group_by(customer_id, account_id) %>% count()
-cust <- combinations %>% select(customer_id, account_id) %>% group_by(customer_id) %>%  count()
-df <- data.frame(cust)
-df <- df[df$n != 1,]
-print(nrow(df))
-acct <- combinations %>% select(customer_id, account_id) %>% group_by(account_id) %>%  count()
-df2 <- data.frame(acct)
-df2 <- df2[df2$n != 1,]
-print(nrow(df2))
-```
- 
+1)Cleaning Data 
 ```{r}
 #Clean defenitions for cleaner merge
 event_def <- event_def %>% select(!c(journey_id, event_definition_id))
@@ -51,26 +41,113 @@ data_def <- data.frame(data_def)
 data_def$event_timestamp <- ymd_hms(data_def$event_timestamp)
 ```
 
-3. Where is it effective to intervene with an email or promotion code
+```{r}
+#Cleaning NA Values 
+```
+
+
+2)Exploratory Data Analysis
+```{r}
+#To answer EDA
+combinations <- data %>% group_by(customer_id, account_id) %>% count()
+cust <- combinations %>% select(customer_id, account_id) %>% group_by(customer_id) %>%  count()
+df <- data.frame(cust)
+df <- df[df$n != 1,]
+print(nrow(df))
+acct <- combinations %>% select(customer_id, account_id) %>% group_by(account_id) %>%  count()
+df2 <- data.frame(acct)
+df2 <- df2[df2$n != 1,]
+print(nrow(df2))
+```
+
+```{r}
+#More EDA
+data_def %>% select(journey_steps_until_end, milestone_number) %>% descr()
+```
+
+Question 3. Where is it effective to intervene with an email or promotion code
 ```{r}
 #Cleaning duplicate promotion created entries
 data_three <- data_def
-data_three %>% filter(event_name == 'promotion_created')
-head(data_three, 100)
+ #data_three <- data_three %>% filter(event_name == 'promotion_created' | event_name == 'order_shipped') %>% mutate(lag = lag(event_timestamp, default = NULL)) %>% mutate(diff = event_timestamp - lag) %>% filter(diff > as.difftime(1, units = "secs"))
+data_three
+#4,830,153 
 ```
 
 Whats rate of success after promo sent? 
 ```{r}
 #want customers who have received promotions. 
 #group into customer id, select customer ids where event_name == promotion created
-#promos <- data_three %>% group_by(customer_id)
+df1 <- data_three %>% group_by(customer_id) %>% filter(event_name == 'promotion_created' | event_name == 'order_shipped')
+df1 %>% group_keys() %>% nrow()
+#1,091,509 customers who were sent a promo
 
-#data_three %>% group_by(customer_id) %>% mutate(time_diff = event_timestamp - lag(event_timestamp, default="1"))
+df2 <- data_three %>% group_by(customer_id) %>% filter(event_name == 'promotion_created' | event_name == 'order_shipped') %>%  filter(n_distinct(event_name) > 1)
+df2 %>% group_keys() %>% nrow()
+#231082 customers who completed an order after being sent a promo
 
-#data_three %>% group_by(customer_id) %>% mutate(diff_between = as.vector(diff(zoo(event_timestamp), na.pad=TRUE)))
+df3 <- data_three %>% group_by(customer_id)
+df3 %>% group_keys() %>% nrow()
+#1665688 customers total
 
-#promos[promos$event_name == 'promotion_created'|promos$event_name == 'order_shipped',]
+df4 <- data_three %>% group_by(customer_id) %>% filter(event_name == 'order_shipped') 
+df4%>% group_keys() %>% nrow()
+#320686 customers who completed an order
 
-#lag(data_def$event_timestamp)
+320686 - 231082
+#89604 customers who completed an order unprompted
+1665688 - 1359596
+#306092 customers were unprompted
 ```
 
+```{r}
+#Test on one Customer for Markov Chain Model
+test <- data_three %>% filter(customer_id == '-784961211')
+# Create a transition matrix
+transitions <- table(test$event_name, lag(test$event_name))
+rownames(transitions) <- colnames(transitions) <- unique(test$event_name)
+# Normalize the transition matrix
+normalized_transitions <- prop.table(as(transitions, "matrix"), margin = 1)
+mc <- new("markovchain", transitionMatrix = as(normalized_transitions, "matrix"))
+mc
+# Print the transition matrix
+mc
+
+# Calculate the steady-state distribution
+steady_state <- steadyStates(mc)
+steady_state
+```
+
+```{r}
+#Markov Chain Model For Event Name
+# Create a transition matrix
+transitions <- table(data_three$event_name, lag(data_three$event_name))
+rownames(transitions) <- colnames(transitions) <- unique(data_three$event_name)
+# Normalize the transition matrix
+normalized_transitions <- prop.table(as(transitions, "matrix"), margin = 1)
+mc <- new("markovchain", transitionMatrix = as(normalized_transitions, "matrix"))
+mc
+# Print the transition matrix
+mc
+
+# Calculate the steady-state distribution
+steady_state <- steadyStates(mc)
+steady_state
+```
+
+```{r}
+#Markov Chain Model For Stage
+# Create a transition matrix
+#transitions <- table(data_three$stage, lag(data_three$stage))
+#rownames(transitions) <- colnames(transitions) <- unique(data_three$stage)
+# Normalize the transition matrix
+#normalized_transitions <- prop.table(as(transitions, "matrix"), margin = 1)
+#mc <- new("markovchain", transitionMatrix = as(normalized_transitions, "matrix"))
+#mc
+# Print the transition matrix
+#mc
+
+# Calculate the steady-state distribution
+#steady_state <- steadyStates(mc)
+#steady_state
+```
